@@ -1,0 +1,80 @@
+pipeline {
+    agent any
+
+    environment {
+        AWS_ACCOUNT_ID = '324037323808'
+        AWS_REGION = 'us-east-1'
+        FRONTEND_ECR_REPO = 'client'
+        BACKEND_ECR_REPO = 'server'
+        DOCKER_IMAGE_TAG = 'latest'
+        AWS_ACCESS_KEY_ID = "${env.AWS_ACCESS_KEY_ID}"
+        AWS_SECRET_ACCESS_KEY = "${env.AWS_SECRET_ACCESS_KEY}"
+    }
+
+    stages {
+        stage('Checkout Code') {
+            steps {
+                git url: 'https://github.com/AkroutPro/aws-deploy.git', branch: 'main'
+            }
+        }
+
+        stage('Build Frontend Docker Image') {
+            steps {
+                dir('client') {
+                    script {
+                        docker.build("${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${FRONTEND_ECR_REPO}:${DOCKER_IMAGE_TAG}")
+                    }
+                }
+            }
+        }
+
+        stage('Push Frontend Docker Image to ECR') {
+            steps {
+                script {
+                    sh """
+                        aws ecr get-login-password --region ${AWS_REGION} | \
+                        docker login --username AWS --password-stdin ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com
+                    """
+
+                    docker.withRegistry("https://${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com") {
+                        docker.image("${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${FRONTEND_ECR_REPO}:${DOCKER_IMAGE_TAG}").push()
+                    }
+                }
+            }
+        }
+
+        stage('Build Backend Docker Image') {
+            steps {
+                dir('server') {
+                    script {
+                        docker.build("${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${BACKEND_ECR_REPO}:${DOCKER_IMAGE_TAG}")
+                    }
+                }
+            }
+        }
+
+        stage('Push Backend Docker Image to ECR') {
+            steps {
+                script {
+                    sh """
+                        aws ecr get-login-password --region ${AWS_REGION} | \
+                        docker login --username AWS --password-stdin ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com
+                    """
+
+                    docker.withRegistry("https://${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com") {
+                        docker.image("${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${BACKEND_ECR_REPO}:${DOCKER_IMAGE_TAG}").push()
+                    }
+                }
+            }
+        }
+    }
+
+    post {
+        success {
+            echo 'Pipeline completed successfully!'
+        }
+        failure {
+            echo 'Pipeline failed!'
+        }
+    }
+}
